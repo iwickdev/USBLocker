@@ -44,18 +44,19 @@ def selectScreen():
 
     sg.theme("DarkBlue")
     layout = [
-        [sg.Text("USB Locker v1.0", font=("Arial", 25))],
+        [sg.Text("USB Locker v1.5", font=("Arial", 25))],
         [sg.Text("Select a drive from the list below and press 'Lock Drive'", size=(49, 1)),
          sg.Button("Refresh List", size=(13, 1))],
         [sg.Listbox(scanDrives(), size=(71, 10), key="driveList")],
         [sg.Text("Password:"), sg.InputText(size=(62, 1), key="passwordInput")],
-        [sg.Button("Lock Drive", size=(27, 1)), sg.Button("Unlock Drive", size=(27, 1)), sg.Button("Cancel")]
+        [sg.Button("Lock Drive", size=(27, 1)), sg.Button("Unlock Drive", size=(27, 1)), sg.Button("Close")],
+        [sg.Text("Creaded by: @IWick | https://github.com/iwickgames/", justification="center", size=(65, 1))]
     ]
     window = sg.Window("USB Locker - Select a USB to lock", layout=layout)
     while True:
         event, values = window.read()
 
-        if event == sg.WINDOW_CLOSED or event == "Cancel":
+        if event == sg.WINDOW_CLOSED or event == "Close":
             return "Exit", None, None
 
         if event == "Refresh List":
@@ -103,37 +104,50 @@ def dirAllFP(path):
 
 
 def lockDrive(drive, password):
+    import os
     import hashlib
+    import threading
     import pyAesCrypt
     import PySimpleGUI as sg
+
+    def file_encryption(file, fileName, password):
+        try:
+            pyAesCrypt.encryptFile(file, fileName, password, 64 * 1024)
+            os.remove(file)
+            #secureErase(file, 2, 2)
+        except:
+            pass
 
     indexDrive = dirAllFP(drive)
 
     sg.theme("DarkBlue")
     layout = [
-        [sg.Text("Locking Drive: " + drive, font=("Arial", 20))],
+        [sg.Text("Locking Drive " + drive, font=("Arial", 20))],
         [sg.ProgressBar(len(indexDrive), orientation="h", size=(50, 20), key="progressBar")]
     ]
     window = sg.Window("Locking drive", layout=layout)
 
     fileLocateion = 0
+
     for file in indexDrive:
         fileName = file + ".usblock"
-        try:
-            pyAesCrypt.encryptFile(file, fileName, password, 64 * 1024)
-            secureErase(file, 2, 2)
-        except:
-            pass
 
-        event, values = window.read(timeout=0)
-        if event == sg.WINDOW_CLOSED:
-            window.close()
+        encryption = threading.Thread(target=file_encryption, args=(file, fileName, password))
+        encryption.start()
+
+        while encryption.is_alive():
+            event, values = window.read(timeout=0)
+            if event == sg.WINDOW_CLOSED:
+                window.close()
         window["progressBar"].update_bar(fileLocateion)
 
         fileLocateion += 1
+    window["progressBar"].update_bar(fileLocateion)
 
     with open(drive + "usblock.usbpass", "w") as f:
         f.write(hashlib.sha256(password.encode("utf-8")).hexdigest())
+
+    sg.popup("Drive " + drive + " was successfully locked")
 
     window.close()
 
@@ -141,14 +155,22 @@ def lockDrive(drive, password):
 def unlockDrive(drive, password):
     import os
     import hashlib
+    import threading
     import pyAesCrypt
     import PySimpleGUI as sg
+
+    def unlock_drive(file, fileName, password):
+        try:
+            pyAesCrypt.decryptFile(file, fileName, password, 64 * 1024)
+            os.remove(file)
+        except:
+            pass
 
     indexDrive = dirAllFP(drive)
 
     sg.theme("DarkBlue")
     layout = [
-        [sg.Text("Unlocking Drive: " + drive, font=("Arial", 20))],
+        [sg.Text("Unlocking Drive " + drive, font=("Arial", 20))],
         [sg.ProgressBar(len(indexDrive), orientation="h", size=(50, 20), key="progressBar")]
     ]
     window = sg.Window("Unlocking drive", layout=layout)
@@ -160,19 +182,21 @@ def unlockDrive(drive, password):
     fileLocation = 0
     for file in indexDrive:
         fileName = file.replace(".usblock", "")
-        try:
-            pyAesCrypt.decryptFile(file, fileName, password, 64 * 1024)
-            os.remove(file)
-        except:
-            pass
 
-        event, values = window.read(timeout=0)
-        if event == sg.WINDOW_CLOSED:
-            window.close()
+        decrypt = threading.Thread(target=unlock_drive, args=(file, fileName, password))
+        decrypt.start()
+
+        while decrypt.is_alive():
+            event, values = window.read(timeout=0)
+            if event == sg.WINDOW_CLOSED:
+                window.close()
         window["progressBar"].update_bar(fileLocation)
 
         fileLocation += 1
+    window["progressBar"].update_bar(fileLocation)
 
     os.remove(drive + "usblock.usbpass")
+
+    sg.popup("Drive " + drive + " was successfully unlocked")
 
     window.close()
